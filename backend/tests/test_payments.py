@@ -19,6 +19,7 @@ def ready(app, sent_otps):
 class FakeRazorpay:
     def __init__(self):
         self.orders, self.payments, self.n = {}, {}, 0
+        self.tokens, self.deleted = [], []
 
     def create_order(self, amount_paise, receipt, notes):
         self.n += 1
@@ -40,11 +41,26 @@ class FakeRazorpay:
     def fetch_order_payments(self, oid):
         return [p for p in self.payments.values() if p['order_id'] == oid]
 
+    def create_customer(self, name, contact, email):
+        return 'cust_test'
+
+    def save_card(self, last4):
+        """What Checkout does when the user ticks "save card" and pays."""
+        self.n += 1
+        self.tokens.append({'id': f'token_{self.n:06d}', 'method': 'card', 'created_at': self.n, 'card': {'last4': last4}})
+
+    def fetch_tokens(self, customer_id):
+        return list(self.tokens)
+
+    def delete_token(self, customer_id, token_id):
+        self.deleted.append(token_id)
+        self.tokens = [t for t in self.tokens if t['id'] != token_id]
+
 
 @pytest.fixture
 def rzp(monkeypatch):
     fake = FakeRazorpay()
-    for name in ('create_order', 'fetch_payment', 'fetch_order_payments'):
+    for name in ('create_order', 'fetch_payment', 'fetch_order_payments', 'create_customer', 'fetch_tokens', 'delete_token'):
         monkeypatch.setattr(f'portal.helpers.razorpay_helper.{name}', getattr(fake, name))
     return fake
 
@@ -228,3 +244,48 @@ def test_history_status_filter_and_payment_alert(app, sent_otps, rzp, monkeypatc
     assert mails == ['LendEase: Payment successful']
     assert c.get('/v1/payments?status=SUCCESS', headers=auth(token)).json['response']['total'] == 1
     assert c.get('/v1/payments?status=FAILED', headers=auth(token)).json['response']['total'] == 0
+
+
+def _pay(c, token, rzp, oid):
+    pid = rzp.pay(oid, method='card')
+    return c.post('/v1/payments/verify', json={'razorpay_order_id': oid, 'razorpay_payment_id': pid,
+                                               'razorpay_signature': _sig(oid, pid)}, headers=auth(token))
+
+
+def test_card_saved_on_first_payment_then_paid_with_token(app, sent_otps, rzp):
+    c, token, loan = ready(app, sent_otps)
+    first = _session(c, token, loan, amount='100.00').json['response']
+    assert first['checkout']['customer_id'] == 'cust_test' and first['checkout']['save'] == 1
+    assert 'token' not in first['checkout'] and first['card']['saved'] is False
+    assert first['checkout']['prefill']['contact'] == '+919876543210'
+
+    rzp.save_card('4321')                    # user entered the linked card in Checkout and saved it
+    assert _pay(c, token, rzp, first['checkout']['order_id']).json['response']['payment']['status'] == 'SUCCESS'
+    card = c.get('/v1/cards', headers=auth(token)).json['response']['cards'][0]
+    assert card['saved_for_payments'] is True
+
+    nxt = _session(c, token, loan, amount='100.00').json['response']
+    assert nxt['checkout']['token'] == rzp.tokens[0]['id'] and 'save' not in nxt['checkout']
+
+
+def test_live_mode_saves_only_the_matching_card(app, sent_otps, rzp):
+    c, token, loan = ready(app, sent_otps)
+    app.config['RAZORPAY_KEY_ID'], app.config['LOAN_SETTLEMENT_PROVIDER'] = 'rzp_live_x', 'partner'
+    try:
+        s = _session(c, token, loan, amount='100.00').json['response']
+        rzp.save_card('9999')                # a different card was entered — not this linked card
+        _pay(c, token, rzp, s['checkout']['order_id'])
+        assert c.get('/v1/cards', headers=auth(token)).json['response']['cards'][0]['saved_for_payments'] is False
+    finally:
+        app.config['RAZORPAY_KEY_ID'], app.config['LOAN_SETTLEMENT_PROVIDER'] = 'rzp_test_dummy', ''
+
+
+def test_removing_a_card_forgets_its_saved_token(app, sent_otps, rzp):
+    c, token, loan = ready(app, sent_otps)
+    s = _session(c, token, loan, amount='100.00').json['response']
+    rzp.save_card('4321')
+    _pay(c, token, rzp, s['checkout']['order_id'])
+    saved = rzp.tokens[0]['id']
+    card = c.get('/v1/cards', headers=auth(token)).json['response']['cards'][0]
+    assert c.delete(f"/v1/cards/{card['card_id']}", headers=auth(token)).status_code == 200
+    assert rzp.deleted == [saved] and not rzp.tokens

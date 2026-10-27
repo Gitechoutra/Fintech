@@ -1,5 +1,6 @@
 import os
 
+import click
 from dotenv import load_dotenv
 
 # In development, .env must win over values inherited from the reloader's parent process.
@@ -41,5 +42,22 @@ with app.app_context():
                            'Is MySQL running and does the database exist?')
 
 
+@app.cli.command('seed-demo')
+@click.option('--mobile', help='E.164 mobile of the user to seed (default: most recent user).')
+@click.option('--clear', is_flag=True, help='Remove the demo rows only.')
+def seed_demo(mobile, clear):
+    """DEV only: add demo loans, EMIs, cards and payments for one user."""
+    from portal.models.users import Users
+    from portal.seeders.seed_demo_data import clear_demo_data, seed_demo_data
+    if clear:
+        user = (Users.query.filter_by(mobile_number=mobile).first() if mobile
+                else Users.query.order_by(Users.created_on.desc()).first())
+        click.echo(f'Removed: {clear_demo_data(user)}' if user else 'No user found.')
+        return
+    click.echo(f'Seeded: {seed_demo_data(mobile)}')
+
+
 if __name__ == '__main__':
-    app.run(host='127.0.0.1', port=int(os.getenv('PORT', 5050)), debug=app.config['DEBUG'])
+    # Reload on .env edits too (keys, feature flags) — the reloader only watches .py files.
+    app.run(host='127.0.0.1', port=int(os.getenv('PORT', 5050)), debug=app.config['DEBUG'],
+            extra_files=[os.path.join(os.path.dirname(os.path.abspath(__file__)), '.env')])

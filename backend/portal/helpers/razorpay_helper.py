@@ -3,6 +3,9 @@ Razorpay integration using the documented REST API (https://razorpay.com/docs/ap
   POST /v1/orders                 — create an order
   GET  /v1/payments/{id}          — fetch a payment (server-side confirmation)
   GET  /v1/orders/{id}/payments   — reconcile all attempts on an order
+  POST /v1/customers              — customer that owns saved (tokenised) cards
+  GET  /v1/customers/{id}/tokens  — the customer's saved cards (last4/network only)
+  DELETE /v1/customers/{id}/tokens/{token} — forget a saved card
 Checkout signature:  HMAC_SHA256(order_id + "|" + payment_id, key_secret)
 Webhook signature:   HMAC_SHA256(raw_body, webhook_secret) in X-Razorpay-Signature
 
@@ -79,6 +82,24 @@ def fetch_payment(payment_id):
 
 def fetch_order_payments(order_id):
     return _request('GET', f'/orders/{order_id}/payments').get('items', [])
+
+
+def create_customer(name, contact, email):
+    """Returns the Razorpay customer id; fail_existing=0 returns the existing one for the same contact/email."""
+    body = {'fail_existing': '0', 'contact': contact}
+    if name:
+        body['name'] = name[:50]
+    if email:
+        body['email'] = email
+    return _request('POST', '/customers', json=body)['id']
+
+
+def fetch_tokens(customer_id):
+    return _request('GET', f'/customers/{customer_id}/tokens').get('items', [])
+
+
+def delete_token(customer_id, token_id):
+    return _request('DELETE', f'/customers/{customer_id}/tokens/{token_id}')
 
 
 def verify_checkout_signature(order_id, payment_id, signature):

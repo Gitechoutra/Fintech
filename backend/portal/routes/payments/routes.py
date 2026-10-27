@@ -29,6 +29,7 @@ from portal.helpers.audit import audit
 from portal.helpers.auth import auth_required, current_user, step_required
 from portal.helpers.loan_math import payable_balance
 from portal.helpers.notify import payment_status_alert
+from portal.helpers.saved_cards import ensure_customer, sync_card_token
 from portal.helpers.onboarding import STEPS
 from portal.helpers.responses import fail, ok, server_error
 from portal.helpers.validators import Validator, money, validate_amount, validate_choice, validate_idempotency_key
@@ -123,6 +124,9 @@ def apply_gateway_payment(txn, entity, via):
     txn.last_reconciled_at = utcnow()
     if txn.status != before and txn.status in (PaymentStatus.SUCCESS, PaymentStatus.FAILED):
         payment_status_alert(txn)
+    if txn.status == PaymentStatus.SUCCESS and before != PaymentStatus.SUCCESS and txn.card:
+        # The card may have just been saved in Checkout — remember its token for next time.
+        sync_card_token(txn.loan.user, txn.card, txn.provider_mode)
     return txn
 
 
@@ -206,7 +210,9 @@ def _payment_card(user, body):
 
 def _checkout_payload(txn, cfg):
     loan = txn.loan
-    return {
+    user = txn.loan.user
+    card = txn.card
+    payload = {
         'payment': serialize_payment(txn),
         'checkout': {
             'key': cfg['key_id'], 'order_id': txn.provider_order_id,
@@ -217,10 +223,21 @@ def _checkout_payload(txn, cfg):
             'config': {'display': {'hide': [{'method': m} for m in NON_CARD_METHODS],
                                    'preferences': {'show_default_blocks': True}}},
         },
-        'card': {'card_id': txn.card.public_id, 'label': _card_label(txn.card), 'last4': txn.card.last4} if txn.card else None,
+        'card': {'card_id': card.public_id, 'label': _card_label(card), 'last4': card.last4,
+                 'saved': bool(card.gateway_token_id)} if card else None,
         'mode': cfg['mode'],
         'notice': cfg['message'],
     }
+    if user.razorpay_customer_id:
+        co = payload['checkout']
+        co['customer_id'] = user.razorpay_customer_id
+        # Razorpay needs the payer's contact to look up / save cards for this customer.
+        co['prefill'] = {'contact': user.mobile_number, **({'email': user.email} if user.email else {})}
+        if card and card.gateway_token_id:
+            co['token'] = card.gateway_token_id     # saved card → bank OTP only
+        else:
+            co['save'] = 1                          # Checkout asks the user's consent to save the card
+    return payload
 
 
 # ── Config / quote ──────────────────────────────────────────────────────────
@@ -311,6 +328,11 @@ class PaymentSession(Resource):
                 return fail('Payment provider returned an unexpected order.', 502, code='PAYMENT_PROVIDER_ERROR')
 
             txn.provider_order_id = order['id']
+            try:
+                ensure_customer(user)
+                sync_card_token(user, card, cfg['mode'])
+            except rzp.RazorpayError:
+                pass                     # saved cards unavailable → full Checkout still works
             db.session.commit()
             audit('PAYMENT_SESSION_CREATED', user.user_id, 'PAYMENT', txn.public_id,
                   details={'amount': str(amount), 'mode': cfg['mode']})

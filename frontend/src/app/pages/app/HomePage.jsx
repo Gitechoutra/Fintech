@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
-import { AlertTriangle, ArrowRight, CalendarClock, ChevronRight, CreditCard, IndianRupee, Landmark, ReceiptText, Wallet } from "lucide-react";
+import { MotionConfig, motion } from "motion/react";
+import { AlertTriangle, ArrowRight, CalendarClock, IndianRupee, Wallet } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
-import { PAYMENT_STATUS, daysUntil, fmtDate, fmtINR } from "../../utils/format";
+import { PAYMENT_STATUS, fmtDate, fmtINR } from "../../utils/format";
 import { classifyDues, dueLabel, emiStatus, summarize } from "../../utils/loans";
 import { Badge, Banner, Button, Card, Skeleton } from "../../components/ui";
 import { useApp } from "./AppContext";
+import { EMI_TYPES, LOAN_TYPES, OTHER_EMI, OTHER_LOAN, groupByProduct } from "../../utils/products";
+import { BillsTile, CardsTile, ProductGrid, item, list } from "./HomeWidgets";
 
 const greeting = () => {
   const h = new Date().getHours();
@@ -13,10 +16,10 @@ const greeting = () => {
 };
 const plural = (n, word) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
-/** Home: summary, Money transfer (Bills · Cards · EMIs · Loans), upcoming payments and recent activity. */
+/** Home: summary, Money transfer (Bills · Cards), pending loans, pending EMIs and recent activity. */
 export function HomePage() {
   const { api, user } = useAuth();
-  const { payCfg, openPay, version } = useApp();
+  const { payCfg, version, lendersAvailable } = useApp();
   const [loans, setLoans] = useState(null);
   const [cards, setCards] = useState(null);
   const [openPayments, setOpenPayments] = useState(null);
@@ -36,24 +39,11 @@ export function HomePage() {
   const s = loans ? summarize(loans) : null;
   const active = loans?.filter((l) => l.loan_status !== "CLOSED") || [];
   const pending = loans && openPayments ? classifyDues(loans).pending.length + openPayments.length : null;
-  const primary = cards?.find((c) => c.is_primary) || cards?.[0];
-  const nextEmi = s?.nextLoan;
-
-  const tiles = [
-    { to: "/dashboard/bills", icon: ReceiptText, title: "Bills",
-      info: pending === null ? null : pending ? `${pending} pending` : "Nothing pending", alert: pending > 0 },
-    { to: "/dashboard/cards", icon: CreditCard, title: "Cards",
-      info: cards === null ? null : cards.length ? `${plural(cards.length, "card")} · ${primary.provider.short_name} ${primary.masked_number}` : "No cards linked" },
-    { to: "/dashboard/emis", icon: CalendarClock, title: "EMIs",
-      info: loans === null ? null : !active.length ? "No active EMIs"
-        : nextEmi ? `Next ${fmtINR(nextEmi.emi_amount)} · ${fmtDate(nextEmi.next_due_date)}` : `${plural(active.length, "active EMI")} · ${emiStatus(active[0]).label}` },
-    { to: "/dashboard/loans", icon: Landmark, title: "Loans",
-      info: loans === null ? null : !loans.length ? "No loans linked"
-        : `${plural(loans.length, "loan")} · ${s.totalOutstanding !== null ? `${fmtINR(s.totalOutstanding)} outstanding` : "details not shared"}` },
-  ];
+  const byDue = (a, b) => (a.next_due_date || "9999").localeCompare(b.next_due_date || "9999");
+  const pendingEmis = [...active].filter((l) => emiStatus(l).label !== "Paid").sort(byDue);
 
   return (
-    <>
+    <MotionConfig reducedMotion="user">
       <div className="flex flex-wrap items-end justify-between gap-3 mb-6">
         <div>
           <p className="text-sm text-muted">{greeting()},</p>
@@ -71,7 +61,7 @@ export function HomePage() {
       {error && <div className="mb-5"><Banner tone="error" action={<Button size="sm" variant="secondary" onClick={load}>Retry</Button>}>{error}</Banner></div>}
 
       {/* Summary */}
-      <section aria-label="Summary" className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-4 mb-10">
+      <motion.section aria-label="Summary" variants={list} initial="hidden" animate="show" className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-4 mb-10">
         <SummaryTile icon={IndianRupee} label="Total outstanding" loading={!s}
           value={s && fmtINR(s.totalOutstanding)}
           note={s && (s.totalOutstanding === null ? "Not shared by your lender"
@@ -83,93 +73,88 @@ export function HomePage() {
           value={s && fmtDate(s.nextDueDate)}
           note={s && (s.nextDueDate ? dueLabel(s.nextDueInDays) : "Not shared by your lender")}
           tone={s?.nextDueInDays !== null && s?.nextDueInDays < 0 ? "danger" : undefined} />
-      </section>
+      </motion.section>
 
       {/* Money transfer */}
       <section aria-labelledby="mt-h" className="mb-10">
         <h2 id="mt-h" className="text-lg font-bold text-fg mb-4">Money transfer</h2>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          {tiles.map((t) => (
-            <Link key={t.to} to={t.to}
-              className="group flex flex-col justify-between gap-5 min-h-40 p-4 sm:p-5 rounded-[var(--radius-card)] bg-surface border border-line
-                shadow-[var(--shadow-card)] hover:border-mint-600/50 hover:-translate-y-0.5 transition-[border-color,transform] duration-200">
-              <div className="flex items-start justify-between">
-                <span className="relative w-12 h-12 rounded-2xl bg-accent-soft flex items-center justify-center group-hover:bg-mint-600 transition-colors">
-                  <t.icon className="w-[22px] h-[22px] text-accent group-hover:text-on-primary transition-colors" aria-hidden />
-                  {t.alert && <span className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-danger ring-2 ring-surface" aria-hidden />}
-                </span>
-                <ChevronRight className="w-4 h-4 text-subtle group-hover:text-accent transition-colors" aria-hidden />
-              </div>
-              <div className="min-w-0">
-                <p className="font-bold text-fg">{t.title}</p>
-                {t.info === null ? <Skeleton className="h-4 w-24 mt-1" />
-                  : <p className={`text-xs mt-0.5 line-clamp-2 ${t.alert ? "text-danger-fg font-semibold" : "text-muted"}`}>{t.info}</p>}
-              </div>
-            </Link>
-          ))}
-        </div>
+        <motion.div variants={list} initial="hidden" animate="show" className="grid grid-cols-1 xs:grid-cols-2 gap-3 sm:gap-4 max-w-[760px]">
+          <BillsTile pending={pending} />
+          <CardsTile cards={cards} />
+        </motion.div>
       </section>
 
-      <div className="grid lg:grid-cols-2 gap-6 items-start">
-        <Card className="p-5 sm:p-6">
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <h2 className="text-lg font-bold text-fg">Upcoming payments</h2>
-            <Link to="/dashboard/emis" className="text-sm font-semibold text-accent hover:underline underline-offset-4">All EMIs</Link>
-          </div>
-          {loans === null ? <Skeleton className="h-16" /> : active.length === 0 ? (
-            <p className="text-sm text-muted">Nothing due.</p>
-          ) : (
-            <ul className="divide-y divide-line">
-              {[...active].sort((a, b) => (a.next_due_date || "9999").localeCompare(b.next_due_date || "9999")).slice(0, 4).map((l) => (
-                <li key={l.loan_id} className="flex items-center gap-3 py-3">
-                  <span className="w-10 h-10 rounded-xl bg-accent-soft flex items-center justify-center shrink-0"><CalendarClock className="w-[18px] h-[18px] text-accent" aria-hidden /></span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-sm font-semibold text-fg truncate">{l.product_name || "Loan"} <span className="text-muted font-normal tabular">{l.masked_number}</span></span>
-                    <span className="block text-xs text-muted">
-                      {l.next_due_date ? `${fmtDate(l.next_due_date)} · ${dueLabel(daysUntil(l.next_due_date))}` : "Due date not shared by your lender"}
-                      {l.emi_amount ? ` · EMI ${fmtINR(l.emi_amount)}` : ""}
-                    </span>
+      {/* Loans */}
+      <section aria-labelledby="loans-h" className="mb-10">
+        <SectionHead id="loans-h" title="Loans" to="/dashboard/loans" link="All loans"
+          meta={loans && active.length > 0 && `${plural(active.length, "loan")} to clear`} />
+        {loans === null ? <GridSkeleton />
+          : <ProductGrid kind="loan" groups={groupByProduct(active, LOAN_TYPES, OTHER_LOAN)} canLink={lendersAvailable} />}
+      </section>
+
+      {/* EMIs */}
+      <section aria-labelledby="emis-h" className="mb-10">
+        <SectionHead id="emis-h" title="EMIs" to="/dashboard/emis" link="All EMIs"
+          meta={pendingEmis.length > 0 && `${plural(pendingEmis.length, "EMI")} pending`} />
+        {loans === null ? <GridSkeleton />
+          : <ProductGrid kind="emi" groups={groupByProduct(active, EMI_TYPES, OTHER_EMI)} canLink={lendersAvailable} />}
+      </section>
+
+      <Card className="p-5 sm:p-6">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <h2 className="text-lg font-bold text-fg">Recent activity</h2>
+          <Link to="/dashboard/history" className="text-sm font-semibold text-accent hover:underline underline-offset-4 inline-flex items-center gap-1">
+            History <ArrowRight className="w-3.5 h-3.5" aria-hidden />
+          </Link>
+        </div>
+        {recent === null ? <Skeleton className="h-16" /> : recent.length === 0 ? (
+          <p className="text-sm text-muted">No payments yet.</p>
+        ) : (
+          <ul className="divide-y divide-line">
+            {recent.map((p) => {
+              const st = PAYMENT_STATUS[p.status] || PAYMENT_STATUS.CREATED;
+              return (
+                <li key={p.payment_id} className="flex items-center justify-between gap-3 py-2.5">
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold text-fg tabular">{fmtINR(p.total)}</span>
+                    <span className="block text-xs text-muted truncate">{fmtDate(p.created_at)} · {p.loan_label}</span>
                   </span>
-                  <Button size="sm" onClick={() => openPay(l)}>{l.open_payment_id ? "Status" : "Pay now"}</Button>
+                  <Badge tone={st.tone}>{st.label}</Badge>
                 </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-        <Card className="p-5 sm:p-6">
-          <div className="flex items-center justify-between gap-3 mb-3">
-            <h2 className="text-lg font-bold text-fg">Recent activity</h2>
-            <Link to="/dashboard/history" className="text-sm font-semibold text-accent hover:underline underline-offset-4 inline-flex items-center gap-1">
-              History <ArrowRight className="w-3.5 h-3.5" aria-hidden />
-            </Link>
-          </div>
-          {recent === null ? <Skeleton className="h-16" /> : recent.length === 0 ? (
-            <p className="text-sm text-muted">No payments yet.</p>
-          ) : (
-            <ul className="divide-y divide-line">
-              {recent.map((p) => {
-                const st = PAYMENT_STATUS[p.status] || PAYMENT_STATUS.CREATED;
-                return (
-                  <li key={p.payment_id} className="flex items-center justify-between gap-3 py-2.5">
-                    <span className="min-w-0">
-                      <span className="block text-sm font-semibold text-fg tabular">{fmtINR(p.total)}</span>
-                      <span className="block text-xs text-muted truncate">{fmtDate(p.created_at)} · {p.loan_label}</span>
-                    </span>
-                    <Badge tone={st.tone}>{st.label}</Badge>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-        </Card>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
+    </MotionConfig>
+  );
+}
+
+function SectionHead({ id, title, to, link, meta }) {
+  return (
+    <div className="flex items-center justify-between gap-3 mb-4">
+      <div className="flex items-baseline gap-2.5">
+        <h2 id={id} className="text-lg font-bold text-fg">{title}</h2>
+        {meta && <span className="text-xs font-semibold text-muted">{meta}</span>}
       </div>
-    </>
+      <Link to={to} className="text-sm font-semibold text-accent hover:underline underline-offset-4 inline-flex items-center gap-1">
+        {link} <ArrowRight className="w-3.5 h-3.5" aria-hidden />
+      </Link>
+    </div>
+  );
+}
+
+function GridSkeleton() {
+  return (
+    <div className="grid grid-cols-2 xs:grid-cols-3 lg:grid-cols-5 gap-3">
+      {[0, 1, 2, 3, 4].map((i) => <Skeleton key={i} className="h-36 !rounded-2xl" />)}
+    </div>
   );
 }
 
 function SummaryTile({ icon: Icon, label, value, note, loading, tone }) {
   return (
-    <Card className="p-3.5 sm:p-5 flex items-center sm:items-start gap-3 sm:gap-3.5">
+    <motion.div variants={item}><Card className="p-3.5 sm:p-5 flex items-center sm:items-start gap-3 sm:gap-3.5 h-full">
       <span className="w-9 h-9 sm:w-11 sm:h-11 rounded-xl sm:rounded-2xl bg-accent-soft flex items-center justify-center shrink-0"><Icon className="w-[18px] h-[18px] sm:w-5 sm:h-5 text-accent" aria-hidden /></span>
       <div className="min-w-0">
         <p className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</p>
@@ -178,6 +163,6 @@ function SummaryTile({ icon: Icon, label, value, note, loading, tone }) {
         )}
         {!loading && note && <p className="text-xs text-muted mt-0.5 truncate">{note}</p>}
       </div>
-    </Card>
+    </Card></motion.div>
   );
 }

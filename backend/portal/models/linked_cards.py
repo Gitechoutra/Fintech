@@ -9,7 +9,9 @@ class LinkedCardStatus:
 
 class LinkedCards(CrudMixin, db.Model):
     """A credit card the user linked after the OTP check. Only display-safe
-    identifiers (e.g. last 4 digits) are stored — never a full card number or CVV."""
+    identifiers (e.g. last 4 digits) are stored — never a full card number or CVV.
+    gateway_token_id is Razorpay's token for the card, created when the user saves it
+    in Razorpay Checkout on a first payment; later payments use it (bank OTP only)."""
     __tablename__ = 'linked_cards'
 
     card_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
@@ -23,6 +25,8 @@ class LinkedCards(CrudMixin, db.Model):
 
     status = db.Column(db.String(20), nullable=False, default=LinkedCardStatus.LINKED, index=True)
     is_primary = db.Column(db.Boolean, nullable=False, default=False)
+    gateway_token_id = db.Column(db.String(64), nullable=True)
+    gateway_token_saved_at = db.Column(db.DateTime, nullable=True)
     verified_at = db.Column(db.DateTime, nullable=False, default=utcnow)
     created_on = db.Column(db.DateTime, nullable=False, default=utcnow)
     updated_on = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)

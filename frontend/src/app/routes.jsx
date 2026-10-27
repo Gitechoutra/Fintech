@@ -8,7 +8,7 @@ import { HomePage } from "./pages/app/HomePage";
 import { SearchPage } from "./pages/app/SearchPage";
 import { CardsPage } from "./pages/app/CardsPage";
 import { BillsPage } from "./pages/app/BillsPage";
-import { EmisPage } from "./pages/app/EmisPage";
+import { EmiDetailPage, EmisPage } from "./pages/app/EmisPage";
 import { LoanDetailPage, LoansPage } from "./pages/app/LoansPage";
 import { HistoryPage } from "./pages/app/HistoryPage";
 import { SettingsPage } from "./pages/app/SettingsPage";
@@ -40,6 +40,7 @@ export const router = createBrowserRouter([
       { path: "scanner", lazy: () => import("./pages/app/ScannerPage").then((m) => ({ Component: m.ScannerPage })) },
       { path: "bills", Component: BillsPage },
       { path: "emis", Component: EmisPage },
+      { path: "emis/:loanId", Component: EmiDetailPage },
       { path: "loans", Component: LoansPage },
       { path: "loans/:loanId", Component: LoanDetailPage },
       { path: "history", Component: HistoryPage },

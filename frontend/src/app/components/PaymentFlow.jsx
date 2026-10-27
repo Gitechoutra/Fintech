@@ -1,14 +1,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock, Loader2, ReceiptText, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Clock, Loader2, ReceiptText, ShieldCheck, XCircle } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { PAYMENT_STATUS, SETTLEMENT_LABEL, fmtDate, fmtDateTime, fmtINR, titleCase } from "../utils/format";
-import { loadCheckout } from "../utils/razorpay";
+import { loadRazorpay } from "../utils/razorpay";
 import { cleanAmount, newIdempotencyKey, validatePaymentAmount } from "../utils/validation";
 import { BankLogo } from "./BankLogo";
 import { Badge, Banner, Button, Field, Row, inputCls } from "./ui";
 
 /**
- * amount → review (server quote: fee + total) → Razorpay Checkout → status.
+ * amount → review (server quote: fee + total) → pay → status. A linked card already saved
+ * with Razorpay pays with its token (bank OTP only); otherwise Razorpay Checkout opens
+ * once to enter and save it.
  * The status shown at the end is always the server's, which it gets from Razorpay
  * server-to-server — never from the checkout callback alone.
  */
@@ -63,6 +65,7 @@ export function PaymentFlow({ loan, payment, onFinished }) {
     setBusy(false);
     if (!r.ok) { setErr(r.errors?.amount || r.message); return; }
     setQuote(r.data);
+    loadRazorpay(card.saved_for_payments ? "custom" : "checkout");
     idemKey.current = newIdempotencyKey();       // one key per confirmation → retries reuse it
     setStep("review");
   };
@@ -82,34 +85,60 @@ export function PaymentFlow({ loan, payment, onFinished }) {
     }
     const session = r.data;
     setTxn(session.payment);
-    if (!(await loadCheckout())) {
+    const co = session.checkout;
+    const pid = session.payment.payment_id;
+
+    const onPaid = async (resp) => {
+      setStep("status");
+      const v = await api("/payments/verify", { method: "POST", body: resp });
+      if (v.ok) setTxn(v.data.payment);
+      poll(pid);
+    };
+    // Cancels only if Razorpay saw no attempt; otherwise shows the real (server) status.
+    const onClosed = async (message = "Payment cancelled. No money was taken.") => {
       setBusy(false);
-      await api(`/payments/${session.payment.payment_id}/cancel`, { method: "POST" });
+      const c = await api(`/payments/${pid}/cancel`, { method: "POST" });
+      if (c.ok && c.data.payment.status === "CANCELLED") { setNotice(message); setTxn(null); return; }
+      setStep("status");
+      poll(pid);
+    };
+
+    // Saved card: pay with its Razorpay token — the bank's OTP page is the only step.
+    if (co.token && co.prefill?.email) {
+      const Custom = await loadRazorpay("custom");
+      try {
+        if (!Custom) throw new Error("unavailable");
+        const rz = new Custom({ key: co.key });
+        rz.on("payment.success", onPaid);
+        rz.on("payment.error", () => onClosed("The payment was not completed. No money was taken."));
+        rz.createPayment({
+          amount: co.amount, currency: co.currency, order_id: co.order_id, description: co.description,
+          email: co.prefill.email, contact: co.prefill.contact,
+          method: "card", customer_id: co.customer_id, token: co.token,
+        });
+        return;
+      } catch {
+        /* fall through to Standard Checkout, which also lists the saved card */
+      }
+    }
+
+    // First payment with this card (or fallback): Razorpay's window, where the card is
+    // entered once and the user can consent to save it for OTP-only payments next time.
+    const Checkout = await loadRazorpay("checkout");
+    if (!Checkout) {
+      setBusy(false);
+      await api(`/payments/${pid}/cancel`, { method: "POST" });
       setNotice("Couldn't load the secure payment window. Check your connection and try again.");
       return;
     }
-    const rzp = new window.Razorpay({
-      ...session.checkout,
-      prefill: {},                                 // no personal data sent to the gateway from here
+    const { token: _token, ...options } = co;
+    const rzp = new Checkout({
+      ...options,
+      prefill: co.prefill || {},                   // only the contact Razorpay needs for saved cards
       notes: {},
       theme: { color: "#00C594" },
-      handler: async (resp) => {
-        setStep("status");
-        const v = await api("/payments/verify", { method: "POST", body: resp });
-        if (v.ok) setTxn(v.data.payment);
-        poll(session.payment.payment_id);
-      },
-      modal: {
-        confirm_close: true,
-        ondismiss: async () => {
-          setBusy(false);
-          // Cancels only if Razorpay saw no attempt; otherwise returns the real status.
-          const c = await api(`/payments/${session.payment.payment_id}/cancel`, { method: "POST" });
-          if (c.ok && c.data.payment.status === "CANCELLED") { setNotice("Payment cancelled. No money was taken."); setTxn(null); return; }
-          setStep("status");
-          poll(session.payment.payment_id);
-        },
-      },
+      handler: onPaid,
+      modal: { confirm_close: true, ondismiss: () => onClosed() },
     });
     rzp.on("payment.failed", () => { /* the final status comes from the server, not this event */ });
     rzp.open();
@@ -165,7 +194,11 @@ export function PaymentFlow({ loan, payment, onFinished }) {
                     <input type="radio" name="paycard" className="sr-only" checked={cardId === c.card_id}
                       onChange={() => { setCardId(c.card_id); setErr(""); }} />
                     <BankLogo provider={c.provider} size="sm" />
-                    <span className="text-sm font-semibold text-fg">{c.provider.short_name} <span className="tabular text-muted font-normal">{c.masked_number}</span></span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block text-sm font-semibold text-fg">{c.provider.short_name} <span className="tabular text-muted font-normal">{c.masked_number}</span></span>
+                      <span className="block text-xs text-muted">{c.saved_for_payments ? "Saved · pay with bank OTP only" : "First payment: enter card once, then OTP only"}</span>
+                    </span>
+                    {c.saved_for_payments && <Badge tone="success" icon={ShieldCheck}>OTP only</Badge>}
                   </label>
                 ))}
               </div>
@@ -191,8 +224,10 @@ export function PaymentFlow({ loan, payment, onFinished }) {
             <Row k="Via" v={`Razorpay${payment.mode === "test" ? " (test mode)" : ""}`} />
           </div>
           <p className="text-xs text-muted leading-relaxed">
-            Enter your {card ? `${card.provider.short_name} card ${card.masked_number}` : "card"} details in Razorpay's secure
-            window. The payment is confirmed only after we verify it with Razorpay.
+            {card?.saved_for_payments
+              ? `Your ${card.provider.short_name} card ${card.masked_number} is saved with Razorpay. Next you'll only confirm the OTP from your bank.`
+              : `First payment with your ${card ? `${card.provider.short_name} card ${card.masked_number}` : "card"}: enter it once in Razorpay's secure window and tick “Save card”. After that you'll only need your bank's OTP.`}
+            {" "}The payment is confirmed only after we verify it with Razorpay.
           </p>
           <div className="flex gap-2">
             <Button variant="secondary" className="flex-1" onClick={() => setStep("amount")} disabled={busy}>Edit</Button>

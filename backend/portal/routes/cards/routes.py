@@ -26,6 +26,7 @@ from portal.helpers.audit import audit
 from portal.helpers.auth import auth_required, current_user, step_required
 from portal.helpers.onboarding import mark_complete_if_done
 from portal.helpers.responses import fail, ok, server_error
+from portal.helpers.saved_cards import forget_card_token
 from portal.helpers.sms import send_otp_sms, sms_configured
 from portal.helpers.validators import validate_otp
 from portal.models.base import iso, utcnow
@@ -61,6 +62,7 @@ def serialize_card(c):
         'verification_method': c.verification_method,
         'verification_label': VERIFICATION_LABELS.get(c.verification_method, c.verification_method),
         'is_primary': c.is_primary, 'status': c.status, 'verified_at': iso(c.verified_at),
+        'saved_for_payments': bool(c.gateway_token_id),
     }
 
 
@@ -241,6 +243,7 @@ class Card(Resource):
             if card is None:
                 return fail('Card not found.', 404, code='NOT_FOUND')
             was_primary = card.is_primary
+            forget_card_token(user, card)
             card.status, card.is_primary = LinkedCardStatus.REMOVED, False
             if was_primary:
                 nxt = (LinkedCards.query.filter(LinkedCards.user_id == user.user_id,

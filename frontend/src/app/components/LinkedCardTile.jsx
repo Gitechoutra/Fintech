@@ -7,7 +7,8 @@ import { CardPreview } from "./CardPreview";
 export function LinkedCardTile({ card, holder }) {
   return (
     <div className="flex flex-col sm:flex-row gap-5 sm:items-center">
-      <CardPreview last4={card.last4} name={holder} issuer={card.provider.card_product_name || card.provider.name} />
+      <CardPreview last4={card.last4} name={holder} issuer={card.provider.card_product_name || card.provider.name}
+        brand={card.provider.brand_color} />
       <div className="min-w-0 space-y-2">
         <div className="flex items-center gap-3">
           <BankLogo provider={card.provider} />

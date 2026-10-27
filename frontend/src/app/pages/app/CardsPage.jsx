@@ -57,7 +57,8 @@ export function CardsPage() {
         ) : (
           <div className="grid lg:grid-cols-[380px_minmax(0,1fr)] gap-6 items-start">
             <div className="space-y-4">
-              <CardPreview last4={primary.last4} name={user.full_name} issuer={primary.provider.card_product_name || primary.provider.name} />
+              <CardPreview last4={primary.last4} name={user.full_name} issuer={primary.provider.card_product_name || primary.provider.name}
+                brand={primary.provider.brand_color} />
               <Card className="p-4">
                 <p className="text-xs font-semibold uppercase tracking-wider text-muted">Primary card</p>
                 <p className="font-bold text-fg mt-1">{primary.provider.name} <span className="tabular text-muted font-medium">{primary.masked_number}</span></p>

@@ -34,6 +34,9 @@ class Users(CrudMixin, db.Model):
     payment_alerts = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
     login_alerts = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
 
+    # Razorpay customer that holds the user's saved (tokenised) cards — an opaque id, no card data.
+    razorpay_customer_id = db.Column(db.String(40), nullable=True)
+
     last_login = db.Column(db.DateTime, nullable=True)
     created_on = db.Column(db.DateTime, nullable=False, default=utcnow)
     updated_on = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)

@@ -1,8 +1,8 @@
-"""notification prefs, scanner history
+"""Initial migration
 
-Revision ID: b9e13d0d8c87
-Revises: a9629ead9c2f
-Create Date: 2026-10-27 13:45:44.626115
+Revision ID: 6e998a5914cb
+Revises: 
+Create Date: 2026-10-27 16:05:38.746612
 
 """
 from alembic import op
@@ -10,8 +10,8 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'b9e13d0d8c87'
-down_revision = 'a9629ead9c2f'
+revision = '6e998a5914cb'
+down_revision = None
 branch_labels = None
 depends_on = None
 
