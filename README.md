@@ -67,3 +67,18 @@ available and the dashboard shows "—" for them (nothing is estimated). Both id
 user picks (primary card by default). Payments need `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` in `backend/.env`;
 until then the dashboard says payments are not available. Razorpay asks the user to enter that card's details —
 the app never stores them.
+
+## Dashboard (`/dashboard`)
+
+A fixed top bar (and a fixed bottom tab bar on phones) with six sections; the active one is highlighted.
+
+| Section | Route | What it does |
+|---|---|---|
+| Home | `/dashboard` | Summary (total outstanding, upcoming EMI, next due date), a card per loan with loan amount, outstanding, EMI, due date, repayment progress and **Pay now**, upcoming payments, quick actions, recent activity |
+| Cards | `/dashboard/cards` | Linked credit cards: link, make primary, remove |
+| Scanner | `/dashboard/scanner` | Scan a UPI QR (camera or image) and open it in the phone's UPI app; hand-offs are recorded (`/v1/scan/payments`) |
+| Bills | `/dashboard/bills` | Pending (overdue / being confirmed), upcoming and paid EMIs |
+| History | `/dashboard/history` | All EMI payments with status filters and receipts, plus scan-and-pay history |
+| Settings | `/dashboard/settings` | Profile, MPIN, biometrics, signed-in devices, email alert preferences, theme, sign out |
+
+Figures the lender doesn't share (Bajaj Finance via OTP) show "—" and "Not shared" — nothing is estimated.

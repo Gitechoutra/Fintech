@@ -13,5 +13,6 @@ def init_app(app):
         from .loan_accounts import LoanAccounts                       # noqa: F401
         from .loan_link_attempts import LoanLinkAttempts              # noqa: F401
         from .loan_payments import LoanPayments                       # noqa: F401
+        from .qr_payments import QrPayments                           # noqa: F401
 
     app.logger.info('Initialized models')

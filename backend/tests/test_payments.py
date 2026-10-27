@@ -215,3 +215,16 @@ def test_bajaj_loan_payment_without_lender_figures(app, sent_otps, rzp):
     assert bajaj['payable_balance'] is None
     r = _session(c, token, bajaj, amount='5000.00')
     assert r.status_code == 201 and r.json['response']['payment']['loan_label'].startswith('Bajaj Finance Loan')
+
+
+def test_history_status_filter_and_payment_alert(app, sent_otps, rzp, monkeypatch):
+    mails = []
+    monkeypatch.setattr('portal.helpers.notify.send_email', lambda to, subject, body: mails.append(subject) or True)
+    c, token, loan = ready(app, sent_otps)
+    oid = _session(c, token, loan).json['response']['checkout']['order_id']
+    pid = rzp.pay(oid)
+    c.post('/v1/payments/verify', json={'razorpay_order_id': oid, 'razorpay_payment_id': pid,
+                                        'razorpay_signature': _sig(oid, pid)}, headers=auth(token))
+    assert mails == ['LendEase: Payment successful']
+    assert c.get('/v1/payments?status=SUCCESS', headers=auth(token)).json['response']['total'] == 1
+    assert c.get('/v1/payments?status=FAILED', headers=auth(token)).json['response']['total'] == 0

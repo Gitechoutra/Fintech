@@ -28,6 +28,7 @@ from portal.helpers import razorpay_helper as rzp
 from portal.helpers.audit import audit
 from portal.helpers.auth import auth_required, current_user, step_required
 from portal.helpers.loan_math import payable_balance
+from portal.helpers.notify import payment_status_alert
 from portal.helpers.onboarding import STEPS
 from portal.helpers.responses import fail, ok, server_error
 from portal.helpers.validators import Validator, money, validate_amount, validate_choice, validate_idempotency_key
@@ -97,6 +98,7 @@ def apply_gateway_payment(txn, entity, via):
     gw_status, pid = entity.get('status'), entity.get('id')
     if txn.status == PaymentStatus.SUCCESS:
         return txn                                          # terminal
+    before = txn.status
     if gw_status == 'captured':
         other = LoanPayments.query.filter(LoanPayments.provider_payment_id == pid,
                                           LoanPayments.payment_id != txn.payment_id).first()
@@ -119,6 +121,8 @@ def apply_gateway_payment(txn, entity, via):
         txn.failure_reason = (entity.get('error_description') or 'The payment was declined.')[:255]
     txn.verified_via = via
     txn.last_reconciled_at = utcnow()
+    if txn.status != before and txn.status in (PaymentStatus.SUCCESS, PaymentStatus.FAILED):
+        payment_status_alert(txn)
     return txn
 
 
@@ -402,7 +406,8 @@ class RazorpayWebhook(Resource):
 @ns.route('')
 class Payments(Resource):
     @ns.doc(description='Payment history, newest first.',
-            params={'page': 'Page', 'per_page': 'Max 50', 'loan_id': 'Filter by loan'})
+            params={'page': 'Page', 'per_page': 'Max 50', 'loan_id': 'Filter by loan',
+                    'status': 'SUCCESS | FAILED | PENDING | CREATED | OPEN'})
     @auth_required
     def get(self):
         user = current_user()
@@ -410,6 +415,11 @@ class Payments(Resource):
         per_page = min(max(request.args.get('per_page', 10, type=int), 1), 50)
         q = LoanPayments.query.filter(LoanPayments.user_id == user.user_id,
                                       LoanPayments.status != PaymentStatus.CANCELLED)
+        status = request.args.get('status', '', type=str).upper()
+        if status in (PaymentStatus.SUCCESS, PaymentStatus.FAILED, PaymentStatus.PENDING, PaymentStatus.CREATED):
+            q = q.filter(LoanPayments.status == status)
+        elif status == 'OPEN':
+            q = q.filter(LoanPayments.status.in_(PaymentStatus.OPEN))
         loan_id = request.args.get('loan_id', '', type=str)[:32]
         if loan_id:
             q = q.join(LoanAccounts).filter(LoanAccounts.public_id == loan_id)

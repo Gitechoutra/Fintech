@@ -30,6 +30,10 @@ class Users(CrudMixin, db.Model):
     # Onboarding fact that is not derivable from other tables.
     onboarded_at = db.Column(db.DateTime, nullable=True)
 
+    # Notification preferences (emails to the verified address).
+    payment_alerts = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
+    login_alerts = db.Column(db.Boolean, nullable=False, default=True, server_default=db.true())
+
     last_login = db.Column(db.DateTime, nullable=True)
     created_on = db.Column(db.DateTime, nullable=False, default=utcnow)
     updated_on = db.Column(db.DateTime, nullable=False, default=utcnow, onupdate=utcnow)

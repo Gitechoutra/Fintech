@@ -255,3 +255,24 @@ class Card(Resource):
         except Exception:
             db.session.rollback()
             return server_error(logger, 'cards/delete')
+
+
+@ns.route('/<string:card_id>/primary')
+class CardPrimary(Resource):
+    @ns.doc(description='Make a linked card the primary card (preselected for payments).')
+    @auth_required
+    def post(self, card_id):
+        try:
+            user = current_user()
+            card = LinkedCards.query.filter_by(public_id=card_id[:32], user_id=user.user_id,
+                                               status=LinkedCardStatus.LINKED).first()
+            if card is None:
+                return fail('Card not found.', 404, code='NOT_FOUND')
+            LinkedCards.query.filter_by(user_id=user.user_id, status=LinkedCardStatus.LINKED)                 .update({'is_primary': False})
+            card.is_primary = True
+            db.session.commit()
+            audit('CARD_PRIMARY_SET', user.user_id, 'CARD', card.public_id)
+            return ok({'card': serialize_card(card)})
+        except Exception:
+            db.session.rollback()
+            return server_error(logger, 'cards/primary')

@@ -28,6 +28,7 @@ from portal.helpers.auth import (
 )
 from portal.helpers.email import email_configured, send_verification_email
 from portal.helpers.mpin import check_mpin
+from portal.helpers.notify import login_alert
 from portal.helpers.onboarding import mark_complete_if_done, status_for
 from portal.helpers.responses import fail, ok, server_error
 from portal.helpers.sms import send_otp_sms, sms_configured
@@ -54,6 +55,8 @@ def user_payload(user):
         'mobile_number': user.masked_mobile,
         'has_mpin': bool(user.mpin_hash),
         'biometric_enabled': user.webauthn_credentials.count() > 0,
+        'notifications': {'payment_alerts': bool(user.payment_alerts), 'login_alerts': bool(user.login_alerts),
+                          'email_available': email_configured() and user.email_verified_at is not None},
         'created_on': iso(user.created_on),
         'onboarding': status_for(user),
     }
@@ -206,6 +209,8 @@ class VerifyOTP(Resource):
                 session.last_active_at = utcnow() - timedelta(days=1)
             db.session.commit()
             audit('USER_REGISTERED' if is_new else 'USER_LOGIN', user.user_id, 'SESSION', session.public_id)
+            if not is_new:
+                login_alert(user, request.headers.get('User-Agent'))
 
             if requires_unlock:
                 resp = ok({'requires_unlock': True, 'is_new_user': False, 'user': _lock_payload(user)})
@@ -378,7 +383,7 @@ class Me(Resource):
     def get(self):
         return ok(user_payload(current_user()))
 
-    @ns.doc(description='Complete or update the account details (full name, email).')
+    @ns.doc(description='Complete or update the account details: full_name, email (optional once an email is on file).')
     @limiter.limit('20 per minute')
     @auth_required
     def patch(self):
@@ -388,10 +393,12 @@ class Me(Resource):
             v = Validator()
             name, e = validate_name(body.get('full_name'), required=True)
             v.check('full_name', e)
-            email, e = validate_email(body.get('email'), required=True)
+            # Email may be omitted to keep the current address (it is required only when none is on file).
+            email, e = validate_email(body.get('email'), required=user.email is None)
             v.check('email', e)
             if not v.ok:
                 return v.response()
+            email = email or user.email
             other = Users.query.filter(Users.email == email, Users.user_id != user.user_id).first()
             if other:
                 return fail('This email address is already used by another account.', 409, code='EMAIL_IN_USE',
@@ -501,3 +508,28 @@ class VerifyEmailOTP(Resource):
         except Exception:
             db.session.rollback()
             return server_error(logger, 'email/verify')
+
+
+# ── Notification preferences ────────────────────────────────────────────────
+
+@ns.route('/preferences')
+class Preferences(Resource):
+    @ns.doc(description='Update email alert preferences. Body: payment_alerts, login_alerts (booleans).')
+    @limiter.limit('30 per minute')
+    @auth_required
+    def patch(self):
+        try:
+            body = _json()
+            user = current_user()
+            for key in ('payment_alerts', 'login_alerts'):
+                if key in body:
+                    if not isinstance(body[key], bool):
+                        return fail('Use true or false.', 400, code='VALIDATION_ERROR', errors={key: 'Use true or false.'})
+                    setattr(user, key, body[key])
+            db.session.commit()
+            audit('PREFERENCES_UPDATED', user.user_id,
+                  details={'payment_alerts': user.payment_alerts, 'login_alerts': user.login_alerts})
+            return ok(user_payload(user))
+        except Exception:
+            db.session.rollback()
+            return server_error(logger, 'preferences')

@@ -12,12 +12,15 @@ from portal import db
 from portal.extensions import limiter
 from portal.helpers import webauthn_helper
 from portal.helpers.audit import audit
-from portal.helpers.auth import auth_required, clear_refresh_cookie, current_user, revoke_all_sessions, step_required
+from portal.helpers.auth import (
+    auth_required, clear_refresh_cookie, current_user, revoke_all_sessions, revoke_session, step_required,
+)
 from portal.helpers.mpin import check_mpin, hash_mpin
 from portal.helpers.onboarding import mark_complete_if_done
 from portal.helpers.responses import fail, ok, server_error
 from portal.helpers.validators import Validator, clean_text, validate_mpin
 from portal.models.base import iso, utcnow
+from portal.models.user_sessions import UserSessions, SessionStatus
 from portal.models.webauthn_credentials import WebAuthnCredentials
 
 from . import ns, logger
@@ -33,7 +36,13 @@ class SecuritySettings(Resource):
     @auth_required
     def get(self):
         user = current_user()
+        sessions = (UserSessions.query.filter_by(user_id=user.user_id, status=SessionStatus.ACTIVE)
+                    .filter(UserSessions.expires_at > utcnow())
+                    .order_by(UserSessions.last_active_at.desc()).all())
         return ok({
+            'sessions': [{'session_id': s.public_id, 'current': s.session_id == g.session.session_id,
+                          'user_agent': s.user_agent, 'created_on': iso(s.created_on),
+                          'last_active_at': iso(s.last_active_at)} for s in sessions],
             'has_mpin': bool(user.mpin_hash),
             'mpin_set_at': iso(user.mpin_set_at),
             'idle_lock_minutes': current_app.config['SESSION_IDLE_LOCK_MINUTES'],
@@ -156,3 +165,36 @@ class BiometricCredential(Resource):
         db.session.commit()
         audit('BIOMETRIC_REMOVED', user.user_id)
         return ok({'message': 'Biometric device removed.'})
+
+
+@ns.route('/sessions/<string:session_id>')
+class DeviceSessionRevoke(Resource):
+    @ns.doc(description='Sign out another device.')
+    @auth_required
+    def delete(self, session_id):
+        user = current_user()
+        s = UserSessions.query.filter_by(public_id=session_id[:32], user_id=user.user_id,
+                                         status=SessionStatus.ACTIVE).first()
+        if not s or s.session_id == g.session.session_id:
+            return fail('Session not found.', 404, code='NOT_FOUND')
+        revoke_session(s, 'REVOKED_BY_USER')
+        db.session.commit()
+        audit('SESSION_REVOKED', user.user_id, 'SESSION', s.public_id)
+        return ok({'message': 'Device signed out.'})
+
+
+@ns.route('/sessions/revoke-others')
+class RevokeOtherSessions(Resource):
+    @ns.doc(description='Sign out every device except this one.')
+    @limiter.limit('10 per minute')
+    @auth_required
+    def post(self):
+        user = current_user()
+        n = 0
+        for s in UserSessions.query.filter_by(user_id=user.user_id, status=SessionStatus.ACTIVE):
+            if s.session_id != g.session.session_id:
+                revoke_session(s, 'REVOKED_BY_USER')
+                n += 1
+        db.session.commit()
+        audit('SESSIONS_REVOKED', user.user_id, details={'count': n})
+        return ok({'message': f'Signed out {n} other device(s).', 'revoked': n})

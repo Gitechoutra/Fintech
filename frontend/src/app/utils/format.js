@@ -54,3 +54,13 @@ export const SETTLEMENT_LABEL = {
   SETTLED: "Credited to your lender",
   FAILED: "Lender credit failed — contact support",
 };
+
+export const timeAgo = (s, now = Date.now()) => {
+  if (!s) return "—";
+  const sec = Math.round((now - new Date(s).getTime()) / 1000);
+  if (!Number.isFinite(sec)) return "—";
+  if (sec < 60) return "just now";
+  if (sec < 3600) return `${Math.floor(sec / 60)} min ago`;
+  if (sec < 86400) return `${Math.floor(sec / 3600)} h ago`;
+  return `${Math.floor(sec / 86400)} d ago`;
+};

@@ -26,6 +26,31 @@ def email_configured():
     return False
 
 
+def send_email(to_email, subject, body):
+    """Plain-text email via the configured provider. Returns True when sent (or written to the
+    console in development). Never raises — notifications must not break the request."""
+    c = current_app.config
+    provider = c.get('EMAIL_PROVIDER')
+    if not to_email or not email_configured():
+        return False
+    if provider == 'console':
+        current_app.logger.info(f'[DEV EMAIL] to {to_email}: {subject}')
+        return True
+    msg = EmailMessage()
+    msg['Subject'], msg['From'], msg['To'] = subject, c['MAIL_FROM'], to_email
+    msg.set_content(body)
+    try:
+        with smtplib.SMTP(c['SMTP_HOST'], c['SMTP_PORT'], timeout=15) as s:
+            if c['SMTP_USE_TLS']:
+                s.starttls()
+            s.login(c['SMTP_USERNAME'], c['SMTP_PASSWORD'])
+            s.send_message(msg)
+        return True
+    except (smtplib.SMTPException, OSError) as e:
+        logger.error(f'SMTP send failed: {e.__class__.__name__}')
+        return False
+
+
 def send_verification_email(to_email, code):
     """Returns {'success': bool, 'provider': str}. Never logs the code except in console (dev) mode."""
     c = current_app.config

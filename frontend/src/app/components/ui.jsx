@@ -22,7 +22,7 @@ export function ToastProvider({ children }) {
   return (
     <ToastCtx.Provider value={push}>
       {children}
-      <div className="fixed z-[90] bottom-4 inset-x-4 sm:inset-x-auto sm:right-6 sm:bottom-6 flex flex-col gap-2 items-stretch sm:items-end pointer-events-none"
+      <div className="fixed z-[90] bottom-24 sm:bottom-28 inset-x-4 sm:inset-x-auto sm:right-6 flex flex-col gap-2 items-stretch sm:items-end pointer-events-none"
         role="status" aria-live="polite">
         <AnimatePresence>
           {toasts.map((t) => {
