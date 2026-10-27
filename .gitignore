@@ -1,5 +1,4 @@
 # Environment / secrets
-.env
 *.env
 !.env.example
 
@@ -24,3 +23,4 @@ dist/
 Thumbs.db
 .vscode/
 .idea/
+migrations/
