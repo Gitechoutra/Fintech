@@ -1,0 +1,932 @@
+{
+  "info": {
+    "name": "LendEase API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "LendEase backend (/v1). Development: SMS_PROVIDER=console and EMAIL_PROVIDER=console return `dev_otp` in the response. Swagger UI: {{base_url}}/doc/"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://127.0.0.1:5050/v1"
+    },
+    {
+      "key": "access_token",
+      "value": ""
+    },
+    {
+      "key": "mobile",
+      "value": "9876543210"
+    },
+    {
+      "key": "attempt_id",
+      "value": ""
+    },
+    {
+      "key": "loan_id",
+      "value": ""
+    },
+    {
+      "key": "card_attempt_id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Authentication",
+      "item": [
+        {
+          "name": "Send OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/authentication/otp/send",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "authentication",
+                "otp",
+                "send"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile_number\": \"{{mobile}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Verify OTP (register)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "description": "Replace otp_code with dev_otp from Send OTP. A returning user with an MPIN gets requires_unlock=true.",
+            "url": {
+              "raw": "{{base_url}}/authentication/otp/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "authentication",
+                "otp",
+                "verify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mobile_number\": \"{{mobile}}\",\n  \"otp_code\": \"000000\",\n  \"full_name\": \"Asha Rao\",\n  \"email\": \"asha@example.com\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json().response || {};",
+                  "if (r.access_token) pm.collectionVariables.set('access_token', r.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Session on this device",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "lendease"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/authentication/session",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "authentication",
+                "session"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Refresh access token",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "lendease"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/authentication/refresh",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "authentication",
+                "refresh"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json().response || {};",
+                  "if (r.access_token) pm.collectionVariables.set('access_token', r.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Unlock with MPIN",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "lendease"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/authentication/unlock",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "authentication",
+                "unlock"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mpin\": \"4826\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json().response || {};",
+                  "if (r.access_token) pm.collectionVariables.set('access_token', r.access_token);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Me",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/authentication/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "authentication",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Send email code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/authentication/email/send",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "authentication",
+                "email",
+                "send"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "Verify email code",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "Replace with dev_otp from Send email code.",
+            "url": {
+              "raw": "{{base_url}}/authentication/email/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "authentication",
+                "email",
+                "verify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"otp\": \"000000\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Update profile",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/authentication/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "authentication",
+                "me"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Asha Rao\",\n  \"email\": \"asha@example.com\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Requested-With",
+                "value": "lendease"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/authentication/logout",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "authentication",
+                "logout"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Onboarding",
+      "item": [
+        {
+          "name": "Status",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/onboarding/status",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "onboarding",
+                "status"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Loans",
+      "item": [
+        {
+          "name": "Providers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/loans/providers",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "loans",
+                "providers"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Start Bajaj loan verification (sends OTP)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "OTP goes to the verified mobile; dev_otp is returned in development.",
+            "url": {
+              "raw": "{{base_url}}/loans/link/start",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "loans",
+                "link",
+                "start"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider_code\": \"BAJAJ_FINANCE\",\n  \"identifiers\": {\n    \"loan_account_number\": \"BFL4482019\",\n    \"customer_id\": \"CUST55120\"\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json().response || {};",
+                  "if (r.attempt_id) pm.collectionVariables.set('attempt_id', r.attempt_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify Bajaj loan OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "Replace code with dev_otp from the start response.",
+            "url": {
+              "raw": "{{base_url}}/loans/link/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "loans",
+                "link",
+                "verify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"attempt_id\": \"{{attempt_id}}\",\n  \"code\": \"000000\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json().response || {};",
+                  "if (r.loan) pm.collectionVariables.set('loan_id', r.loan.loan_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Linked loans",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/loans",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "loans"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Refresh from lender",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/loans/{{loan_id}}/refresh",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "loans",
+                "{{loan_id}}",
+                "refresh"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Security",
+      "item": [
+        {
+          "name": "Create MPIN",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/security/mpin",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "security",
+                "mpin"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"new_mpin\": \"4826\",\n  \"confirm_mpin\": \"4826\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Change MPIN",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/security/mpin",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "security",
+                "mpin"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"current_mpin\": \"4826\",\n  \"new_mpin\": \"5937\",\n  \"confirm_mpin\": \"5937\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Security settings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/security/settings",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "security",
+                "settings"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. Cards",
+      "item": [
+        {
+          "name": "Card providers (master data)",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/cards/providers",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "cards",
+                "providers"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Start card link (sends OTP)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "OTP goes to the user's verified mobile; dev_otp is returned in development.",
+            "url": {
+              "raw": "{{base_url}}/cards/link/start",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "cards",
+                "link",
+                "start"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"provider_code\": \"BAJAJ\",\n  \"identifiers\": {\n    \"last4\": \"9876\"\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const r = pm.response.json().response || {};",
+                  "if (r.attempt_id) pm.collectionVariables.set('card_attempt_id', r.attempt_id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Verify card OTP",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/cards/link/verify",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "cards",
+                "link",
+                "verify"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"attempt_id\": \"{{card_attempt_id}}\",\n  \"otp\": \"000000\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Linked cards",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/cards",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "cards"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. Payments",
+      "item": [
+        {
+          "name": "Payment config",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/payments/config",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payments",
+                "config"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Quote",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/payments/quote",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payments",
+                "quote"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loan_id\": \"{{loan_id}}\",\n  \"amount\": \"15240.00\",\n  \"payment_type\": \"EMI\"\n}"
+            }
+          }
+        },
+        {
+          "name": "Create payment session",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "Pays with a linked credit card (card method only). Needs RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET.",
+            "url": {
+              "raw": "{{base_url}}/payments/session",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payments",
+                "session"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"loan_id\": \"{{loan_id}}\",\n  \"amount\": \"15240.00\",\n  \"payment_type\": \"EMI\",\n  \"idempotency_key\": \"{{$guid}}\",\n  \"card_id\": \"<linked card_id; omit for primary>\"\n}"
+            }
+          }
+        },
+        {
+          "name": "History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
+            ],
+            "description": "",
+            "url": {
+              "raw": "{{base_url}}/payments?page=1&per_page=10",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "payments?page=1&per_page=10"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
